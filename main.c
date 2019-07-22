@@ -1,5 +1,6 @@
 #include "lvgl/lvgl.h"
 #include "lv_drivers/display/fbdev.h"
+#include "lv_drivers/indev/libinput.h"
 #include "lv_examples/lv_apps/demo/demo.h"
 #include <unistd.h>
 #include <pthread.h>
@@ -29,6 +30,18 @@ int main(void)
     disp_drv.buffer = &disp_buf;
     disp_drv.flush_cb = fbdev_flush;
     lv_disp_drv_register(&disp_drv);
+
+    lv_indev_drv_t indev_drv;
+
+    lv_indev_drv_init(&indev_drv);/*Basic initialization*/
+
+    libinput_init();
+
+    indev_drv.type = LV_INDEV_TYPE_POINTER;/*See below.*/
+
+    indev_drv.read_cb = libinput_read;/*See below.*/
+
+    lv_indev_drv_register(&indev_drv);/*Register the driver in LittlevGL*/
 
     /*Create a Demo*/
     demo_create();

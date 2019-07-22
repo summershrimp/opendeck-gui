@@ -261,7 +261,7 @@
  * Touchscreen as libinput interface (for Linux based systems)
  *------------------------------------------------*/
 #ifndef USE_LIBINPUT
-#  define USE_LIBINPUT           0
+#  define USE_LIBINPUT           1
 #endif
 
 #if USE_LIBINPUT
