@@ -1,7 +1,7 @@
 #include "lvgl/lvgl.h"
 #include "lv_drivers/display/fbdev.h"
-#include "lv_drivers/indev/libinput.h"
-#include "lv_examples/lv_apps/demo/demo.h"
+#include "lv_drivers/indev/libinput_drv.h"
+#include "lv_app/opendeck_app.h"
 #include <unistd.h>
 #include <pthread.h>
 #include <time.h>
@@ -42,9 +42,7 @@ int main(void)
     indev_drv.read_cb = libinput_read;/*See below.*/
 
     lv_indev_drv_register(&indev_drv);/*Register the driver in LittlevGL*/
-
-    /*Create a Demo*/
-    demo_create();
+    create_app();
 
     /*Handle LitlevGL tasks (tickless mode)*/
     while(1) {
