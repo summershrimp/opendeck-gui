@@ -5,17 +5,21 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <assert.h>
 
-void lv_btn_group_create(lv_obj_t*, lv_img_dsc_t *imgs[2]);
+void lv_btn_group_create(lv_obj_t*);
 
 static void btn_event_cb(lv_obj_t * imgbtn, lv_event_t event);
 static void hid_task(lv_task_t * task);
 int hid_read_handler(uint8_t *data, int size);
 
 static lv_img_dsc_t glassKey;
-static lv_img_dsc_t icon[2];
-
+static lv_img_dsc_t icon_tmp;
+static lv_img_dsc_t g_img_dscs[15][2];
 static in_report key_report = {0};
+
+unsigned char icon_datas[15][2][120*120*4] = {0};
 
 void create_app(void){
     hid_open(hid_read_handler);
@@ -30,18 +34,27 @@ void create_app(void){
     if(! status){
         printf("glassKey load failed\n");
     }
-    status = png_loader("action.png", &icon[0]);
+    status = png_loader("action.png", &icon_tmp);
     if(! status){
         printf("action load failed\n");
     }
-    memcpy(&icon[1], &icon[0], sizeof(icon[0]));
-    lv_img_dsc_t *imgs[15]; 
+    assert(icon_tmp.data_size == 120*120*4);
+
     for(i=0; i<15; ++i) {
-        imgs[i] = icon; 
+        memcpy(&g_img_dscs[i][0], &icon_tmp, sizeof(icon_tmp));
+        memcpy(&g_img_dscs[i][1], &icon_tmp, sizeof(icon_tmp));
+        memcpy(icon_datas[i][0], icon_tmp.data, icon_tmp.data_size);
+        memcpy(icon_datas[i][1], icon_tmp.data, icon_tmp.data_size);
+        
+        g_img_dscs[i][0].data = icon_datas[i][0];
+        g_img_dscs[i][1].data = icon_datas[i][1];
+
     }
+    free((char *)icon_tmp.data);
+    icon_tmp.data = NULL;
     printf("ok read img\n");
 
-    lv_btn_group_create(lv_scr_act(), imgs);
+    lv_btn_group_create(lv_scr_act());
     printf ("ok create btn\n");
     lv_task_create(hid_task, 10, LV_TASK_PRIO_HIGH, NULL);
     printf ("ok create task\n");
@@ -52,12 +65,100 @@ static void hid_task(lv_task_t * task){
     hid_send_report((uint8_t *)&key_report, sizeof(key_report));
 }
 
-int hid_read_handler(uint8_t *data, int size){
-    fprintf(stderr, "Hid received %u data\n", size);
+static unsigned char *g_recv_data = NULL;
+unsigned short g_recv_cur = 0;
+
+int create_g_recv(int size) {
+    if(g_recv_data) {
+        free(g_recv_data);
+        g_recv_cur = 0;
+    }
+    g_recv_data = malloc(size);
     return 0;
 }
 
-void lv_btn_group_create(lv_obj_t *parent, lv_img_dsc_t *img_dscs[2])
+int free_g_recv() {
+    if(g_recv_data) {
+        free(g_recv_data);
+        g_recv_cur = 0;
+        g_recv_data = NULL;
+    }
+    return 0;
+}
+
+int copy_to_g_recv(uint8_t *data, int size) {
+    out_report *p = (out_report *) data;
+    if(p->length + OUT_REPORT_HEADER_LEN > size ) {
+        return -1;
+    }
+    memcpy(g_recv_data+g_recv_cur, p->data, p->length);
+    return 0;
+}
+
+int deal_data(unsigned char * data, int size, int key, int msg_type);
+
+int hid_read_handler(uint8_t *data, int size){
+    static out_report last;
+    static int has_last = 0;
+    int status;
+    out_report *p = (out_report *) data;
+    printf("hid received: %d\n", size);
+    if(has_last) {
+        if(p->total_length != last.total_length || p->key_id != last.key_id ||
+        p->type != last.type ) {
+            has_last = 0;
+            free_g_recv();
+            return 0;
+        }
+    } else {
+        create_g_recv(p->total_length);
+    }
+
+    status = copy_to_g_recv(data, size);
+    if(!status) {
+        has_last = 0;
+        free_g_recv();
+    }
+    if(p->has_more) {
+        has_last = 1;
+        memcpy(&last, p, OUT_REPORT_HEADER_LEN);
+    } else {
+        deal_data(g_recv_data, p->total_length, p->key_id, p->type);
+        free_g_recv();
+        memset(&last, 0, OUT_REPORT_HEADER_LEN);
+        has_last = 0;
+    }
+    return 0;
+}
+
+
+int deal_data(unsigned char * data, int size, int key, int msg_type) {
+    int status;
+    if(key >= 15) {
+        printf("key from hid too large: %d.\n", key);
+        return -1;
+    }
+    if(msg_type == KEY_NORM_IMG || msg_type == KEY_TOGG_IMG) {
+        status = png_data_loader(data, size, &icon_tmp);
+        if(! status){
+            printf("load png data from hid failed\n");
+            return -1;
+        }
+        if(icon_tmp.data_size != 120*120*4) {
+            printf("png data from hid size incorrect \n");
+            return -1;
+        }
+        memcpy(icon_datas[key][msg_type], icon_tmp.data, icon_tmp.data_size);
+        if(key == KEY_NORM_IMG) {
+            memcpy(icon_datas[key][KEY_TOGG_IMG], icon_tmp.data, icon_tmp.data_size);
+        }
+        free((char *)icon_tmp.data);
+        printf("update key %d succes.\n", key);
+    }                                     
+    return 0;
+}
+
+void lv_btn_group_create(lv_obj_t *parent)
 {
     static lv_style_t style_pr;
     lv_style_copy(&style_pr, &lv_style_plain);
@@ -77,10 +178,10 @@ void lv_btn_group_create(lv_obj_t *parent, lv_img_dsc_t *img_dscs[2])
             img[j][i] = lv_img_create(imgbtn[j][i], NULL);
             lv_img_set_src(img[j][i], &glassKey);
             lv_imgbtn_set_toggle(imgbtn[j][i], true);
-            lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_REL, &img_dscs[id][0]);
-            lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_PR, &img_dscs[id][0]);
-            lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_TGL_REL, &img_dscs[id][1]);
-            lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_TGL_PR, &img_dscs[id][1]);
+            lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_REL, &g_img_dscs[id][0]);
+            lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_PR, &g_img_dscs[id][0]);
+            lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_TGL_REL, &g_img_dscs[id][1]);
+            lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_TGL_PR, &g_img_dscs[id][1]);
             lv_imgbtn_set_style(imgbtn[j][i], LV_BTN_STATE_PR, &style_pr);        /*Use the darker style in the pressed state*/
             lv_imgbtn_set_style(imgbtn[j][i], LV_BTN_STATE_TGL_PR, &style_pr);
             lv_imgbtn_set_toggle(imgbtn[j][i], false);

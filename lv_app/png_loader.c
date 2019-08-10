@@ -36,3 +36,28 @@ int png_loader(const char *file, lv_img_dsc_t *out_png_dsc) {
 
     return true;
 }
+
+
+int png_data_loader(const uint8_t *png_data, size_t png_data_size, lv_img_dsc_t *out_png_dsc) {
+    uint32_t error;                 /*For the return values of png decoder functions*/
+
+    /*Decode the PNG image*/
+    unsigned char * png_decoded;    /*Will be pointer to the decoded image*/
+    uint32_t png_width;             /*Will be the width of the decoded image*/
+    uint32_t png_height;            /*Will be the width of the decoded image*/
+
+    /*Decode the loaded image in ARGB8888 */
+    error = lodepng_decode32(&png_decoded, &png_width, &png_height, png_data, png_data_size);   
+    if(error) {
+        return false;
+    }
+
+    out_png_dsc->header.always_zero = 0;                          /*It must be zero*/
+    out_png_dsc->header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;      /*Set the color format*/
+    out_png_dsc->header.w = png_width;
+    out_png_dsc->header.h = png_height;
+    out_png_dsc->data_size = png_width * png_height * 4;
+    out_png_dsc->data = png_decoded;
+
+    return true;
+}

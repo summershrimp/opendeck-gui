@@ -44,7 +44,7 @@ int hid_send_report(uint8_t *data, int size){
         return -1;
     }
     int ok = write(usb_fd, data, size);
-    fprintf(stderr, "hid write %u\n", size);
+
     if(ok == size) {
         return 0;
     }
