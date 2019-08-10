@@ -1,6 +1,8 @@
 #include "lvgl/lvgl.h"
 #include "opendeck_app.h"
 #include "opendeck_hid.h"
+#include "protocol.h"
+
 #include <stdio.h>
 #include <unistd.h>
 
@@ -13,6 +15,8 @@ int hid_read_handler(uint8_t *data, int size);
 static lv_img_dsc_t glassKey;
 static lv_img_dsc_t icon[2];
 
+static in_report key_report = {0};
+
 void create_app(void){
     hid_open(hid_read_handler);
 
@@ -23,27 +27,34 @@ void create_app(void){
     lv_obj_set_style(lv_scr_act(), &bg_style);
     int i;
     int status = png_loader("glassKey_small.png", &glassKey);
+    if(! status){
+        printf("glassKey load failed\n");
+    }
     status = png_loader("action.png", &icon[0]);
+    if(! status){
+        printf("action load failed\n");
+    }
     memcpy(&icon[1], &icon[0], sizeof(icon[0]));
     lv_img_dsc_t *imgs[15]; 
     for(i=0; i<15; ++i) {
         imgs[i] = icon; 
     }
-    printf("ok read img");
+    printf("ok read img\n");
 
     lv_btn_group_create(lv_scr_act(), imgs);
-    printf ("ok create btn");
-    lv_task_t * task = lv_task_create(hid_task, 1, LV_TASK_PRIO_HIGH, NULL);
-    printf ("ok create task");
+    printf ("ok create btn\n");
+    lv_task_create(hid_task, 10, LV_TASK_PRIO_HIGH, NULL);
+    printf ("ok create task\n");
 }
 
 static void hid_task(lv_task_t * task){
     hid_poll();
+    hid_send_report((uint8_t *)&key_report, sizeof(key_report));
 }
 
 int hid_read_handler(uint8_t *data, int size){
-    write(1, data, size);
-    hid_send_report(data, size);
+    fprintf(stderr, "Hid received %u data\n", size);
+    return 0;
 }
 
 void lv_btn_group_create(lv_obj_t *parent, lv_img_dsc_t *img_dscs[2])
@@ -54,7 +65,7 @@ void lv_btn_group_create(lv_obj_t *parent, lv_img_dsc_t *img_dscs[2])
     style_pr.image.intense = LV_OPA_50;
     style_pr.text.color = lv_color_hex3(0xaaa);
 
-    int i, j, status, id;
+    int i, j, id;
 
     /*Create an Image button*/
     lv_obj_t *imgbtn[3][5];
@@ -94,14 +105,16 @@ void lv_btn_group_create(lv_obj_t *parent, lv_img_dsc_t *img_dscs[2])
  *   STATIC FUNCTIONS
  **********************/
 
+
+
 static void btn_event_cb(lv_obj_t * imgbtn, lv_event_t event)
 {
-    (void) imgbtn; /*Unused*/
-
+    int key_id = (int) imgbtn->user_data;
+    key_report.key_status[key_id] = event;
+    
     if(event == LV_EVENT_RELEASED) {
         lv_imgbtn_toggle(imgbtn);
         lv_btn_state_t state = lv_btn_get_state(imgbtn);
-         int i = 10000;
         switch(state) {
             case LV_BTN_STATE_TGL_PR:
             case LV_BTN_STATE_TGL_REL:
@@ -110,7 +123,7 @@ static void btn_event_cb(lv_obj_t * imgbtn, lv_event_t event)
             case LV_BTN_STATE_REL:
                 state = 0; break;
         }
-        printf("Clicked %d, toggle: %d\n",(int) imgbtn->user_data, state);
+        fprintf(stderr, "Clicked %d, toggle: %d\n", key_id, state);
     }
 
 }
