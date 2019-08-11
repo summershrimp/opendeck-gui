@@ -7,6 +7,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 void lv_btn_group_create(lv_obj_t*);
 
@@ -20,6 +23,9 @@ static lv_img_dsc_t g_img_dscs[15][2];
 static in_report key_report = {0};
 
 unsigned char icon_datas[15][2][120*120*4] = {0};
+
+static lv_obj_t *imgbtn[3][5];
+static lv_obj_t *img[3][5];
 
 void create_app(void){
     hid_open(hid_read_handler);
@@ -71,8 +77,8 @@ unsigned short g_recv_cur = 0;
 int create_g_recv(int size) {
     if(g_recv_data) {
         free(g_recv_data);
-        g_recv_cur = 0;
     }
+    g_recv_cur = 0;
     g_recv_data = malloc(size);
     return 0;
 }
@@ -89,9 +95,15 @@ int free_g_recv() {
 int copy_to_g_recv(uint8_t *data, int size) {
     out_report *p = (out_report *) data;
     if(p->length + OUT_REPORT_HEADER_LEN > size ) {
+        printf("cur length exceed\n");
+        return -1;
+    }
+    if(g_recv_cur >= p->total_length) {
+        printf("total length exceed\n");
         return -1;
     }
     memcpy(g_recv_data+g_recv_cur, p->data, p->length);
+    g_recv_cur += p->length;
     return 0;
 }
 
@@ -102,10 +114,12 @@ int hid_read_handler(uint8_t *data, int size){
     static int has_last = 0;
     int status;
     out_report *p = (out_report *) data;
-    printf("hid received: %d\n", size);
+    //printf("hid received: %d type: %d, key_id: %d, has more: %d, total_size: %x, cur_size: %x \n", 
+    //    size, p->type, p->key_id, p->has_more, p->total_length, p->length);
     if(has_last) {
         if(p->total_length != last.total_length || p->key_id != last.key_id ||
         p->type != last.type ) {
+            printf("bad future data.\n");
             has_last = 0;
             free_g_recv();
             return 0;
@@ -115,7 +129,8 @@ int hid_read_handler(uint8_t *data, int size){
     }
 
     status = copy_to_g_recv(data, size);
-    if(!status) {
+    if(status == -1) {
+        printf("copy_to failed\n");
         has_last = 0;
         free_g_recv();
     }
@@ -123,6 +138,7 @@ int hid_read_handler(uint8_t *data, int size){
         has_last = 1;
         memcpy(&last, p, OUT_REPORT_HEADER_LEN);
     } else {
+        //printf("total_len: %x, recv_cur: %x\n", p->total_length, g_recv_cur);
         deal_data(g_recv_data, p->total_length, p->key_id, p->type);
         free_g_recv();
         memset(&last, 0, OUT_REPORT_HEADER_LEN);
@@ -138,6 +154,7 @@ int deal_data(unsigned char * data, int size, int key, int msg_type) {
         printf("key from hid too large: %d.\n", key);
         return -1;
     }
+    int j = key/5, i = key % 5;
     if(msg_type == KEY_NORM_IMG || msg_type == KEY_TOGG_IMG) {
         status = png_data_loader(data, size, &icon_tmp);
         if(! status){
@@ -149,14 +166,19 @@ int deal_data(unsigned char * data, int size, int key, int msg_type) {
             return -1;
         }
         memcpy(icon_datas[key][msg_type], icon_tmp.data, icon_tmp.data_size);
+        lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_REL, &g_img_dscs[key][0]);
+        lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_PR, &g_img_dscs[key][0]);
         if(key == KEY_NORM_IMG) {
             memcpy(icon_datas[key][KEY_TOGG_IMG], icon_tmp.data, icon_tmp.data_size);
+            lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_TGL_REL, &g_img_dscs[key][KEY_TOGG_IMG]);
+            lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_TGL_PR, &g_img_dscs[key][KEY_TOGG_IMG]);
         }
         free((char *)icon_tmp.data);
-        printf("update key %d succes.\n", key);
+        //printf("update key %d succes.\n", key);
     }                                     
     return 0;
 }
+
 
 void lv_btn_group_create(lv_obj_t *parent)
 {
@@ -167,10 +189,7 @@ void lv_btn_group_create(lv_obj_t *parent)
     style_pr.text.color = lv_color_hex3(0xaaa);
 
     int i, j, id;
-
     /*Create an Image button*/
-    lv_obj_t *imgbtn[3][5];
-    lv_obj_t *img[3][5];
     for(j=0;j<3;++j) {
         for(i=0; i< 5; ++i) {
             id = 5*j + i;
@@ -184,7 +203,7 @@ void lv_btn_group_create(lv_obj_t *parent)
             lv_imgbtn_set_src(imgbtn[j][i], LV_BTN_STATE_TGL_PR, &g_img_dscs[id][1]);
             lv_imgbtn_set_style(imgbtn[j][i], LV_BTN_STATE_PR, &style_pr);        /*Use the darker style in the pressed state*/
             lv_imgbtn_set_style(imgbtn[j][i], LV_BTN_STATE_TGL_PR, &style_pr);
-            lv_imgbtn_set_toggle(imgbtn[j][i], false);
+
             imgbtn[j][i]->user_data = (void*) (id);
             if(i==0 && j==0) {
                 lv_obj_align(imgbtn[0][0], NULL, LV_ALIGN_IN_TOP_LEFT, 36, 30);
@@ -208,14 +227,12 @@ void lv_btn_group_create(lv_obj_t *parent)
 
 
 
-static void btn_event_cb(lv_obj_t * imgbtn, lv_event_t event)
-{
-    int key_id = (int) imgbtn->user_data;
-    key_report.key_status[key_id] = event;
-    
+static void btn_event_cb(lv_obj_t * btn, lv_event_t event)
+{   
+    int key_id = (int) btn->user_data;
     if(event == LV_EVENT_RELEASED) {
-        lv_imgbtn_toggle(imgbtn);
-        lv_btn_state_t state = lv_btn_get_state(imgbtn);
+        lv_imgbtn_toggle(btn);
+        lv_btn_state_t state = lv_btn_get_state(btn);
         switch(state) {
             case LV_BTN_STATE_TGL_PR:
             case LV_BTN_STATE_TGL_REL:
@@ -224,7 +241,10 @@ static void btn_event_cb(lv_obj_t * imgbtn, lv_event_t event)
             case LV_BTN_STATE_REL:
                 state = 0; break;
         }
+        key_report.key_status[key_id] = 0;
         fprintf(stderr, "Clicked %d, toggle: %d\n", key_id, state);
+    } else if(event == LV_EVENT_PRESSED){
+        key_report.key_status[key_id] = 1;
     }
 
 }
