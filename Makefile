@@ -4,7 +4,7 @@
 CC ?= gcc
 LVGL_DIR ?= ${shell pwd}
 CFLAGS ?= -Wall -Wshadow -Wundef -Wmaybe-uninitialized -O3 -I$(LVGL_DIR)/
-LDFLAGS ?= -lpthread -linput
+LDFLAGS ?= -lpthread
 BIN = demo
 
 

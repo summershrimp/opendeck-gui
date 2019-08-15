@@ -1,6 +1,6 @@
 #include "lvgl/lvgl.h"
 #include "lv_drivers/display/fbdev.h"
-#include "lv_drivers/indev/libinput_drv.h"
+#include "lv_drivers/indev/evdev.h"
 #include "lv_app/opendeck_app.h"
 #include <unistd.h>
 #include <pthread.h>
@@ -35,11 +35,11 @@ int main(void)
 
     lv_indev_drv_init(&indev_drv);/*Basic initialization*/
 
-    libinput_init();
+    evdev_init();
 
     indev_drv.type = LV_INDEV_TYPE_POINTER;/*See below.*/
 
-    indev_drv.read_cb = libinput_read;/*See below.*/
+    indev_drv.read_cb = evdev_read;/*See below.*/
 
     lv_indev_drv_register(&indev_drv);/*Register the driver in LittlevGL*/
     create_app();

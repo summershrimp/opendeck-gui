@@ -261,7 +261,7 @@
  * Touchscreen as libinput interface (for Linux based systems)
  *------------------------------------------------*/
 #ifndef USE_LIBINPUT
-#  define USE_LIBINPUT           1
+#  define USE_LIBINPUT           0
 #endif
 
 #if USE_LIBINPUT
@@ -272,7 +272,7 @@
  * Mouse or touchpad as evdev interface (for Linux based systems)
  *------------------------------------------------*/
 #ifndef USE_EVDEV
-#  define USE_EVDEV           0
+#  define USE_EVDEV           1
 #endif
 
 #if USE_EVDEV
